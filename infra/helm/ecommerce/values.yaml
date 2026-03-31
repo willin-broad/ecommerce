@@ -1,0 +1,25 @@
+global:
+  imageRegistry: ghcr.io/REPLACE_ME
+  imagePullPolicy: IfNotPresent
+
+userService:
+  replicaCount: 2
+  image: {name: user-service, tag: latest}
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits:   {cpu: 500m, memory: 256Mi}
+
+productService:
+  replicaCount: 2
+  image: {name: product-service, tag: latest}
+
+orderService:
+  replicaCount: 2
+  image: {name: order-service, tag: latest}
+
+postgresql:
+  enabled: true
+  auth: {password: changeme}
+
+rabbitmq:
+  enabled: true

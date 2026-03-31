@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  api-gateway:
+    build: ./services/api-gateway
+    ports: ["80:80"]
+    depends_on: [user-service, product-service, order-service]
+
+  user-service:
+    build: ./services/user-service
+    ports: ["3001:3001"]
+    env_file: ./services/user-service/.env
+    depends_on: [postgres, rabbitmq]
+
+  product-service:
+    build: ./services/product-service
+    ports: ["3002:3002"]
+    env_file: ./services/product-service/.env
+    depends_on: [postgres]
+
+  order-service:
+    build: ./services/order-service
+    ports: ["3003:3003"]
+    depends_on: [postgres, rabbitmq]
+
+  notification-service:
+    build: ./services/notification-service
+    ports: ["3004:3004"]
+    depends_on: [rabbitmq]
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports: ["5672:5672", "15672:15672"]
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports: ["9090:9090"]
+    volumes: [./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml]
+
+  grafana:
+    image: grafana/grafana:latest
+    ports: ["3000:3000"]
+    volumes: [grafana_data:/var/lib/grafana]
+
+volumes:
+  pgdata:
+  grafana_data:

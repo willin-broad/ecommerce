@@ -1,0 +1,6 @@
+userService:
+  replicaCount: 1
+productService:
+  replicaCount: 1
+orderService:
+  replicaCount: 1

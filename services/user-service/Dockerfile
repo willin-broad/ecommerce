@@ -1,12 +1,14 @@
-FROM node:20-alpine AS builder
+FROM python:3.11-slim AS builder
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-FROM node:20-alpine
+FROM python:3.11-slim
 WORKDIR /app
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /root/.local /root/.local
 COPY src ./src
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
+ENV PATH=/root/.local/bin:$PATH
 EXPOSE 3001
-USER node
-CMD ["node", "src/index.js"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "3001"]

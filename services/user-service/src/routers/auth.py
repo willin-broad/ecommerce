@@ -95,3 +95,30 @@ def verify_email(token: str = Query(...), db: Session = Depends(get_db)):
 
     return {"message": "Email verified successfully. You can now log in."}
 
+
+@router.post("/login", response_model=TokenResponse)
+def login(payload: LoginRequest, db: Session = Depends(get_db)):
+    """
+    Authenticate a user and return a JWT access token + refresh token pair.
+    Stores a bcrypt hash of the refresh token for rotation validation.
+    """
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account not activated. Please verify your email first.",
+        )
+
+    access_token = create_access_token({"sub": user.id, "role": user.role.value})
+    refresh_token = create_refresh_token({"sub": user.id})
+
+    # Store hashed refresh token — enables reuse detection during rotation
+    user.refresh_token_hash = hash_password(refresh_token)
+    db.commit()
+
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)

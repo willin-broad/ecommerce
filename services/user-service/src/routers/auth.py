@@ -75,3 +75,23 @@ async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         "message": "Registration successful. Check your email to verify your account."
     }
 
+@router.get("/verify-email")
+def verify_email(token: str = Query(...), db: Session = Depends(get_db)):
+    """
+    Verify a user's email address using the UUID token from the registration email.
+    Activates the account (is_active=True, is_verified=True) and clears the token.
+    """
+    user = db.query(User).filter(User.verification_token == token).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or already-used verification token.",
+        )
+
+    user.is_verified = True
+    user.is_active = True
+    user.verification_token = None
+    db.commit()
+
+    return {"message": "Email verified successfully. You can now log in."}
+

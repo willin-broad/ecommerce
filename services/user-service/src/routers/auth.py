@@ -215,3 +215,32 @@ async def forgot_password(
     return {
         "message": "If that email is registered and active, a reset link has been sent."
     }
+
+
+@router.post("/reset-password")
+def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
+    """
+    Apply a new password using the reset token from the reset email.
+    Also invalidates all existing refresh tokens (forces re-login on all devices).
+    """
+    user = (
+        db.query(User)
+        .filter(
+            User.reset_token == payload.token,
+            User.reset_token_expires > datetime.utcnow(),
+        )
+        .first()
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset token.",
+        )
+
+    user.hashed_password = hash_password(payload.new_password)
+    user.reset_token = None
+    user.reset_token_expires = None
+    user.refresh_token_hash = None  # Invalidate all active sessions
+    db.commit()
+
+    return {"message": "Password reset successful. Please log in with your new password."}

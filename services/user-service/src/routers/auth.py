@@ -122,3 +122,46 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     db.commit()
 
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
+    """
+    Exchange a valid refresh token for a new access + refresh token pair.
+    The old refresh token is invalidated (refresh token rotation).
+    Presenting an already-used refresh token raises 401 (reuse detection).
+    """
+    token_data = decode_token(payload.refresh_token)
+    if token_data.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type — refresh token required.",
+        )
+
+    user = (
+        db.query(User)
+        .filter(User.id == token_data.get("sub"), User.is_active == True)  # noqa: E712
+        .first()
+    )
+    if not user or not user.refresh_token_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token invalid or account inactive.",
+        )
+
+    if not verify_password(payload.refresh_token, user.refresh_token_hash):
+        # Token reuse detected — invalidate all sessions as a security measure
+        user.refresh_token_hash = None
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token reuse detected. Please log in again.",
+        )
+
+    new_access = create_access_token({"sub": user.id, "role": user.role.value})
+    new_refresh = create_refresh_token({"sub": user.id})
+    user.refresh_token_hash = hash_password(new_refresh)
+    db.commit()
+
+    return TokenResponse(access_token=new_access, refresh_token=new_refresh)
+

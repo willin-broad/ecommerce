@@ -165,3 +165,53 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
 
     return TokenResponse(access_token=new_access, refresh_token=new_refresh)
 
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(payload: RefreshRequest, db: Session = Depends(get_db)):
+    """
+    Log out by invalidating the refresh token.
+    The access token will still be valid until it expires (short TTL mitigates risk).
+    """
+    try:
+        token_data = decode_token(payload.refresh_token)
+        user = db.query(User).filter(User.id == token_data.get("sub")).first()
+        if user:
+            user.refresh_token_hash = None
+            db.commit()
+    except HTTPException:
+        pass  # Already expired tokens are still a valid logout
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    payload: PasswordResetRequest, db: Session = Depends(get_db)
+):
+    """
+    Initiate a password reset.
+    Always returns success to prevent email enumeration attacks.
+    The reset token expires in 1 hour.
+    """
+    user = db.query(User).filter(User.email == payload.email).first()
+
+    if user and user.is_active:
+        reset_token = str(uuid.uuid4())
+        user.reset_token = reset_token
+        user.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
+        db.commit()
+
+        reset_url = f"{settings.APP_BASE_URL}/api/auth/reset-password?token={reset_token}"
+        await send_email(
+            to=user.email,
+            subject="Password Reset Request — eCommerce Platform",
+            body=(
+                f"Hi {user.full_name},\n\n"
+                f"You requested a password reset. Click the link below:\n\n"
+                f"  {reset_url}\n\n"
+                f"This link expires in 1 hour. If you didn't request this, ignore this email.\n\n"
+                f"— eCommerce Platform"
+            ),
+        )
+
+    return {
+        "message": "If that email is registered and active, a reset link has been sent."
+    }

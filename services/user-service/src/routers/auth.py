@@ -1,11 +1,12 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import get_db
+from ..limiter import limiter
 from ..models.user import User, UserRole
 from ..schemas.user import (
     LoginRequest,
@@ -23,17 +24,21 @@ from ..services.auth import (
     verify_password,
 )
 from ..services.email import send_email
+from ..utils import utcnow
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 settings = get_settings()
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+async def register(request: Request, payload: RegisterRequest, db: Session = Depends(get_db)):
     """
     Register a new customer account.
     Sends a console-logged verification email immediately after creation.
     Account is inactive (is_active=False) until the email is verified.
+
+    Rate limit: 10 requests/minute per IP.
     """
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
@@ -75,6 +80,7 @@ async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         "message": "Registration successful. Check your email to verify your account."
     }
 
+
 @router.get("/verify-email")
 def verify_email(token: str = Query(...), db: Session = Depends(get_db)):
     """
@@ -96,11 +102,47 @@ def verify_email(token: str = Query(...), db: Session = Depends(get_db)):
     return {"message": "Email verified successfully. You can now log in."}
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+@router.post("/resend-verification")
+@limiter.limit("3/hour")
+async def resend_verification(
+    request: Request, payload: PasswordResetRequest, db: Session = Depends(get_db)
+):
     """
-    Authenticate a user and return a JWT access token + refresh token pair.
+    Resend the email verification link.
+    Generates a fresh token and always returns success to prevent email enumeration.
+
+    Rate limit: 3 requests/hour per IP.
+    """
+    user = db.query(User).filter(User.email == payload.email).first()
+
+    if user and not user.is_verified:
+        new_token = str(uuid.uuid4())
+        user.verification_token = new_token
+        db.commit()
+
+        verify_url = f"{settings.APP_BASE_URL}/api/auth/verify-email?token={new_token}"
+        await send_email(
+            to=user.email,
+            subject="Verify your email (resent) — eCommerce Platform",
+            body=(
+                f"Hi {user.full_name},\n\n"
+                f"Here is your new email verification link:\n\n"
+                f"  {verify_url}\n\n"
+                f"— eCommerce Platform"
+            ),
+        )
+
+    return {"message": "If that email is registered and unverified, a new link has been sent."}
+
+
+@router.post("/login", response_model=TokenResponse)
+@limiter.limit("5/minute")
+def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
+    """
+    Authenticate a user and return a JWT access + refresh token pair.
     Stores a bcrypt hash of the refresh token for rotation validation.
+
+    Rate limit: 5 requests/minute per IP.
     """
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.hashed_password):
@@ -183,20 +225,23 @@ def logout(payload: RefreshRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/forgot-password")
+@limiter.limit("3/minute")
 async def forgot_password(
-    payload: PasswordResetRequest, db: Session = Depends(get_db)
+    request: Request, payload: PasswordResetRequest, db: Session = Depends(get_db)
 ):
     """
     Initiate a password reset.
     Always returns success to prevent email enumeration attacks.
     The reset token expires in 1 hour.
+
+    Rate limit: 3 requests/minute per IP.
     """
     user = db.query(User).filter(User.email == payload.email).first()
 
     if user and user.is_active:
         reset_token = str(uuid.uuid4())
         user.reset_token = reset_token
-        user.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
+        user.reset_token_expires = utcnow() + timedelta(hours=1)
         db.commit()
 
         reset_url = f"{settings.APP_BASE_URL}/api/auth/reset-password?token={reset_token}"
@@ -227,7 +272,7 @@ def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db))
         db.query(User)
         .filter(
             User.reset_token == payload.token,
-            User.reset_token_expires > datetime.utcnow(),
+            User.reset_token_expires > utcnow(),
         )
         .first()
     )

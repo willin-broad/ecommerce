@@ -1,26 +1,33 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
+import hashlib
 
 from ..config import get_settings
+from ..utils import utcnow
 
 settings = get_settings()
 
-# bcrypt context — auto-handles hashing and verification
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def _pre_hash(secret: str) -> bytes:
+    """Pre-hash with SHA-256 to bypass bcrypt's 72-byte limit."""
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest().encode("utf-8")
 
 
 def hash_password(plain: str) -> str:
     """Return a bcrypt hash of the given plaintext password."""
-    return pwd_context.hash(plain)
+    return bcrypt.hashpw(_pre_hash(plain), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Return True if plaintext matches the bcrypt hash."""
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(_pre_hash(plain), hashed.encode("utf-8"))
+    except ValueError:
+        return False
 
 
 def create_access_token(
@@ -31,7 +38,7 @@ def create_access_token(
     Embeds `type=access` to prevent refresh tokens from being used as access tokens.
     """
     to_encode = data.copy()
-    expire = datetime.utcnow() + (
+    expire = utcnow() + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode.update({"exp": expire, "type": "access"})
@@ -44,7 +51,7 @@ def create_refresh_token(data: dict) -> str:
     Embeds `type=refresh` so it cannot be used as an access token.
     """
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
     return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 

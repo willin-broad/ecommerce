@@ -7,7 +7,7 @@ orchestrated on Kubernetes, and deployed via a full CI/CD pipeline.
 | Service              | Port | Stack            |
 |----------------------|------|------------------|
 | api-gateway          | 80   | NGINX            |
-| user-service         | 3001 | Node.js/Express  |
+| user-service         | 3001 | Python/FastAPI   |
 | product-service      | 3002 | Python/FastAPI   |
 | order-service        | 3003 | Go/Gin           |
 | notification-service | 3004 | Node.js          |

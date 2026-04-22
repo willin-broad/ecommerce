@@ -6,6 +6,7 @@ from sqlalchemy import Boolean, DateTime, Enum as SAEnum, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from ..utils import utcnow
 
 
 class UserRole(str, enum.Enum):
@@ -59,8 +60,8 @@ class User(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, nullable=False
+        DateTime, default=utcnow, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False
     )

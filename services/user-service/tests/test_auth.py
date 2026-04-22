@@ -1,13 +1,14 @@
 """
 Tests for /api/auth/* endpoints.
-Covers: register, verify-email, login, refresh, logout, forgot-password, reset-password.
+Covers: register, verify-email, resend-verification, login, refresh,
+        logout, forgot-password, reset-password.
 """
 
 from tests.conftest import TestingSessionLocal
 from src.models.user import User
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# wasaidizi 
 
 
 def _get_user_from_db(email: str) -> User:
@@ -39,8 +40,7 @@ def _register_and_verify(client, email="user@test.com", password="password123", 
     return {"email": email, "password": password}
 
 
-# ── Registration ──────────────────────────────────────────────────────────────
-
+#Registration
 
 def test_register_success(client):
     res = _register(client)
@@ -70,7 +70,7 @@ def test_register_invalid_email(client):
     assert res.status_code == 422
 
 
-# ── Email Verification ────────────────────────────────────────────────────────
+#Email Verification
 
 
 def test_verify_email_success(client):
@@ -100,7 +100,7 @@ def test_verify_email_already_used(client):
     assert res.status_code == 400
 
 
-# ── Login ─────────────────────────────────────────────────────────────────────
+#Login
 
 
 def test_login_success(client):
@@ -139,7 +139,7 @@ def test_login_nonexistent_user(client):
     assert res.status_code == 401
 
 
-# ── Token Refresh ─────────────────────────────────────────────────────────────
+#Token Refresh
 
 
 def test_refresh_returns_new_tokens(client):
@@ -168,7 +168,7 @@ def test_refresh_token_reuse_detection(client):
     assert res.status_code == 401
 
 
-# ── Logout ────────────────────────────────────────────────────────────────────
+#Logout
 
 
 def test_logout_invalidates_refresh_token(client):
@@ -183,7 +183,7 @@ def test_logout_invalidates_refresh_token(client):
     assert res.status_code == 401
 
 
-# ── Forgot / Reset Password ───────────────────────────────────────────────────
+#Forgot / Reset Password
 
 
 def test_forgot_password_always_returns_success(client):
